@@ -48,6 +48,22 @@ function randomTimestamp(startDate, endDate) {
     return new Date(randomTime);
 }
 
+function generateRandomName() {
+    const firstNames = [
+      'Alex', 'Jamie', 'Taylor', 'Jordan', 'Morgan', 'Sam', 'Casey', 'Jessie', 'Avery', 'Riley',
+      'Chris', 'Pat', 'Lee', 'Robin', 'Charlie', 'Drew', 'Devon', 'Skyler', 'Rowan', 'Quinn'
+    ];
+  
+    const lastNames = [
+      'Smith', 'Johnson', 'Lee', 'Brown', 'Williams', 'Taylor', 'Jones', 'Garcia', 'Martinez', 'Davis',
+      'Clark', 'Walker', 'Lewis', 'Allen', 'Young', 'Hernandez', 'King', 'Wright', 'Lopez', 'Hill'
+    ];
+  
+    const first = firstNames[Math.floor(Math.random() * firstNames.length)];
+    const last = lastNames[Math.floor(Math.random() * lastNames.length)];
+    return `${first} ${last}`;
+}
+
 async function seedData() {
     try {
         const filePath = path.join(__dirname, '..', 'data', 'message_content.csv');
@@ -58,6 +74,7 @@ async function seedData() {
         const uniquePhoneNumbers = await generateUniquePhoneNumbers(totalContacts);
         const contacts = uniquePhoneNumbers.map((phone) => ({
             phone_number: phone,
+            contact_name: generateRandomName(),
             created_at: fixedTimestamp,
             updated_at: fixedTimestamp,
         }));
@@ -69,15 +86,16 @@ async function seedData() {
             for (let i = 0; i < contacts.length; i += batchSizeContacts) {
                 const batch = contacts.slice(i, i + batchSizeContacts);
                 const valueRows = batch
-                    .map((_, idx) => `($${idx * 3 + 1}, $${idx * 3 + 2}, $${idx * 3 + 3})`)
+                    .map((_, idx) => `($${idx * 4 + 1}, $${idx * 4 + 2}, $${idx * 4 + 3}, $${idx * 4 + 4})`)
                     .join(',');
-                const flatValues = batch.flatMap(contact => [
-                    contact.phone_number,
-                    contact.created_at,
-                    contact.updated_at,
-                ]);
+                    const flatValues = batch.flatMap(contact => [
+                        contact.phone_number,
+                        contact.contact_name,
+                        contact.created_at,
+                        contact.updated_at,
+                    ]);
                 await client.query(
-                    `INSERT INTO contacts (phone_number, created_at, updated_at) VALUES ${valueRows}`,
+                    `INSERT INTO contacts (phone_number, contact_name, created_at, updated_at) VALUES ${valueRows}`,
                     flatValues
                 );
             }
@@ -101,10 +119,10 @@ async function seedData() {
                 const randomContactId = contactIds[Math.floor(Math.random() * contactIds.length)];
                 const messageTimestamp = randomTimestamp(fixedTimestamp, new Date());
                 const randomMessageData = messageContents[Math.floor(Math.random() * messageContents.length)];
-                const context = randomMessageData.messages || `Default message content`;
+                const content = randomMessageData.messages || `Default message content`;
                 messagesBatch.push({
                     contact_id: randomContactId,
-                    context,
+                    content,
                     created_at: messageTimestamp,
                 });
             }
@@ -114,11 +132,11 @@ async function seedData() {
                 .join(',');
             const flatValues = messagesBatch.flatMap(msg => [
                 msg.contact_id,
-                msg.context,
+                msg.content,
                 msg.created_at,
             ]);
             await pool.query(
-                `INSERT INTO messages (contact_id, context, created_at) VALUES ${valueRows}`,
+                `INSERT INTO messages (contact_id, content, created_at) VALUES ${valueRows}`,
                 flatValues
             );
 
@@ -127,6 +145,12 @@ async function seedData() {
             }
         }
         console.log('Messages inserted.');
+
+        console.log('Creating indexes...')
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_messages_contact_id_created_at ON messages(contact_id, created_at DESC);`);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_contacts_phone_number ON contacts(phone_number);`);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_contacts_contact_name ON contacts(contact_name);`);
+        console.log('Indexes created')
         pool.end();
     } catch (error) {
         console.error('Error during seeding:', error);
