@@ -64,21 +64,29 @@ app.get('/contacts/recent-messages', async (req, res) => {
             LIMIT $2 OFFSET $3;
         `;
         values = [searchPattern, limit, offset];
-
         } else {
-        // ⚡ NO FILTER — USE FAST VERSION
         query = `
-            SELECT DISTINCT ON (m.contact_id)
-            m.id AS message_id,
-            m.contact_id,
-            c.phone_number,
-            c.contact_name,
-            m.content,
-            m.created_at
-            FROM messages m
-            JOIN contacts c ON m.contact_id = c.id
-            ORDER BY m.contact_id, m.created_at DESC
-            LIMIT $1 OFFSET $2;
+          SELECT 
+              m2.id AS message_id,
+              m2.contact_id,
+              c.phone_number,
+              c.contact_name,
+              m2.content,
+              m2.created_at
+          FROM (
+              SELECT 
+                  m.contact_id, 
+                  MAX(m.created_at) AS last_message_time
+              FROM messages m
+              GROUP BY m.contact_id
+          ) AS latest
+          JOIN messages m2 
+            ON m2.contact_id = latest.contact_id 
+            AND m2.created_at = latest.last_message_time
+          JOIN contacts c 
+            ON c.id = m2.contact_id
+          ORDER BY m2.created_at DESC
+          LIMIT $1 OFFSET $2;
         `;
         values = [limit, offset];
         }
